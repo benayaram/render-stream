@@ -53,7 +53,7 @@ function getRawUrl(sourceLink) {
 // START STREAM API
 app.post('/start', async (req, res) => {
     const sourceLink = req.body.source;
-    const streamKey = req.body.key || "PASTE_DEFAULT_KEY_HERE"; 
+    const streamKey = req.body.key || "wg0v-kakk-1quj-yadm-2ac0"; 
     const rtmpUrl = `rtmp://a.rtmp.youtube.com/live2/${streamKey}`;
 
     if (ffmpegProcess) {
