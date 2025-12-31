@@ -9,62 +9,80 @@ app.use(express.urlencoded({ extended: true }));
 
 let ffmpegProcess = null;
 
-// HTML Page
+// DASHBOARD
 app.get('/', (req, res) => {
     res.send(`
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>body{font-family:sans-serif;padding:20px;text-align:center}input{width:100%;padding:10px;margin:10px 0}button{width:100%;padding:15px;color:white;border:none;border-radius:5px;font-size:16px}</style>
-        <h1>⛪ Holy Word Stream Control</h1>
-        <form action="/start" method="POST">
-            <input type="text" name="source" placeholder="Paste YouTube/Facebook Link" required />
-            <input type="text" name="key" placeholder="Paste Stream Key (Optional)" />
-            <button type="submit" style="background:red;">🔴 GO LIVE</button>
-        </form>
-        <br>
-        <form action="/stop" method="POST">
-            <button style="background:black;">⬛ STOP STREAM</button>
-        </form>
+        <style>
+            body{font-family:sans-serif;padding:20px;text-align:center;background:#f0f0f0;}
+            .card{background:white;padding:20px;border-radius:10px;box-shadow:0 2px 5px rgba(0,0,0,0.1);}
+            input{width:90%;padding:12px;margin:10px 0;border:1px solid #ccc;border-radius:5px;}
+            button{width:100%;padding:15px;color:white;border:none;border-radius:5px;font-size:18px;font-weight:bold;cursor:pointer;}
+            .live-btn{background:#cc0000;}
+            .stop-btn{background:#333;}
+        </style>
+        <div class="card">
+            <h1>⛪ Stream Relay</h1>
+            <form action="/start" method="POST">
+                <input type="text" name="source" placeholder="Paste Source Link (YouTube)" required />
+                <input type="text" name="key" placeholder="Paste Your Stream Key" required />
+                <button type="submit" class="live-btn">🔴 GO LIVE</button>
+            </form>
+            <br>
+            <form action="/stop" method="POST">
+                <button class="stop-btn">⬛ STOP STREAM</button>
+            </form>
+        </div>
     `);
 });
 
-// Helper function to get the raw video URL using the downloaded file
+// HELPER: Get Video Link (Stealth Mode)
 function getRawUrl(sourceLink) {
     return new Promise((resolve, reject) => {
-        // We use the file './yt-dlp' directly now
-        const process = spawn('./yt-dlp', ['-g', sourceLink]);
-        let dataString = "";
+        // Disguise as an iPhone on a cellular network
+        const args = [
+            '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
+            '--referer', 'https://m.youtube.com/',
+            '--geo-bypass',
+            '-f', 'best',
+            '-g', sourceLink
+        ];
 
-        process.stdout.on('data', (data) => {
-            dataString += data.toString();
-        });
+        const process = spawn('./yt-dlp', args);
+        
+        let dataString = "";
+        let errorString = "";
+
+        process.stdout.on('data', (data) => { dataString += data.toString(); });
+        process.stderr.on('data', (data) => { errorString += data.toString(); });
 
         process.on('close', (code) => {
             if (code === 0 && dataString) {
-                // Get the first link (video), ignoring the second (audio only) if split
                 const rawLink = dataString.split('\n')[0].trim();
                 resolve(rawLink);
             } else {
-                reject(new Error("Could not get video link"));
+                reject(new Error(errorString || "Unknown Error"));
             }
         });
     });
 }
 
-// START STREAM API
+// START ACTION
 app.post('/start', async (req, res) => {
     const sourceLink = req.body.source;
-    const streamKey = req.body.key || "wg0v-kakk-1quj-yadm-2ac0"; 
+    const streamKey = req.body.key;
     const rtmpUrl = `rtmp://a.rtmp.youtube.com/live2/${streamKey}`;
 
     if (ffmpegProcess) {
-        return res.send("<h1>⚠️ Stream is already running! Stop it first.</h1><a href='/'>Back</a>");
+        return res.send("<h1>⚠️ Stream is already running!</h1><a href='/'>Back</a>");
     }
 
     try {
-        console.log(`Getting raw link for: ${sourceLink}`);
+        console.log(`Trying to fetch: ${sourceLink}`);
         const rawUrl = await getRawUrl(sourceLink);
         
-        console.log("Starting FFmpeg...");
+        console.log("Got link, starting FFmpeg...");
+        
         ffmpegProcess = spawn('ffmpeg', [
             '-re',
             '-i', rawUrl,
@@ -72,20 +90,20 @@ app.post('/start', async (req, res) => {
             '-f', 'flv', rtmpUrl
         ]);
 
-        ffmpegProcess.stderr.on('data', (data) => console.log(`FFmpeg: ${data}`));
-        ffmpegProcess.on('close', () => { 
-            ffmpegProcess = null; 
-            console.log("Stream stopped"); 
-        });
+        ffmpegProcess.on('close', () => { ffmpegProcess = null; console.log("FFmpeg stopped."); });
 
-        res.send("<h1>✅ Stream Started! Check YouTube.</h1><a href='/'>Back</a>");
+        res.send("<h1>✅ SUCCESS! Check your Channel.</h1><a href='/'>Back</a>");
     } catch (error) {
-        console.error(error);
-        res.send(`<h1>❌ Error: ${error.message}</h1><a href='/'>Back</a>`);
+        // Print the exact error so you can see it on your phone
+        res.send(`
+            <h3>❌ FAILED</h3>
+            <p><strong>Reason:</strong> ${error.message}</p>
+            <a href='/'>Try Again</a>
+        `);
     }
 });
 
-// STOP STREAM API
+// STOP ACTION
 app.post('/stop', (req, res) => {
     if (ffmpegProcess) {
         ffmpegProcess.kill('SIGINT');
@@ -97,4 +115,4 @@ app.post('/stop', (req, res) => {
 });
 
 app.listen(10000, () => console.log('Server ready on port 10000'));
-                                         
+    
